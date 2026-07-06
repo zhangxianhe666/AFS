@@ -1,9 +1,7 @@
 #!/bin/bash
 # ============================================================
 # AFS DMG 构建脚本 (macOS)
-# 使用 PyInstaller 打包为 .app，再用 hdiutil 生成 .dmg
 # ============================================================
-
 set -e
 
 AFS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,29 +17,30 @@ echo ""
 
 # 1. 安装依赖
 echo "[1/5] 安装 Python 依赖..."
-pip3 install -r "$AFS_DIR/requirements.txt" pyinstaller --quiet
+pip3 install -r "$AFS_DIR/requirements.txt" pyinstaller --quiet 2>&1 | tail -1
 
-# 2. 清理旧产物
+# 2. 清理
 echo "[2/5] 清理旧产物..."
-rm -rf "$DIST_DIR" "$BUILD_DIR"
+rm -rf "$DIST_DIR" "$BUILD_DIR" "$AFS_DIR/$APP_NAME.spec" 2>/dev/null
 
-# 3. PyInstaller 打包
+# 3. PyInstaller
 echo "[3/5] PyInstaller 打包..."
 cd "$AFS_DIR"
-pyinstaller \
+python3 -m PyInstaller \
     --name="$APP_NAME" \
     --onefile \
-    --windowed \
+    --console \
     --add-data "templates:templates" \
     --add-data "static:static" \
-    --add-data "gateway.py:." \
     --hidden-import flask \
     --hidden-import requests \
     --hidden-import gateway \
     --clean \
     app.py
 
-# 4. 创建 .app bundle
+echo "[3/5] 打包完成 → $DIST_DIR/$APP_NAME"
+
+# 4. .app bundle
 echo "[4/5] 创建 .app bundle..."
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
@@ -50,8 +49,7 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 cp "$DIST_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-# Info.plist
-cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
+cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -78,17 +76,15 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
-# 5. 生成 DMG
+# 5. DMG
 echo "[5/5] 生成 DMG..."
 DMG_PATH="$DIST_DIR/$DMG_NAME.dmg"
 rm -f "$DMG_PATH"
 
-# 创建临时目录用于 DMG 内容
 TMP_DMG="$BUILD_DIR/dmg_contents"
 rm -rf "$TMP_DMG"
 mkdir -p "$TMP_DMG"
 cp -R "$APP_BUNDLE" "$TMP_DMG/"
-# 创建 Applications 快捷方式
 ln -s /Applications "$TMP_DMG/Applications"
 
 hdiutil create \
@@ -96,7 +92,7 @@ hdiutil create \
     -srcfolder "$TMP_DMG" \
     -ov \
     -format UDZO \
-    "$DMG_PATH"
+    "$DMG_PATH" 2>&1 | tail -1
 
 rm -rf "$TMP_DMG"
 
@@ -107,6 +103,4 @@ echo "============================================"
 echo ""
 echo "  DMG:  $DMG_PATH"
 echo "  App:  $APP_BUNDLE"
-echo ""
-echo "  双击 DMG 安装，或将 App 拖入 Applications"
 echo ""
